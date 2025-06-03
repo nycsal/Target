@@ -1,1 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shoot the Target</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: Arial, sans-serif; }
+        #gameCanvas { display: block; margin: 0 auto; background: radial-gradient(circle, #4a90e2, #1a1a1a); }
+        #scoreboard { position: absolute; top: 10px; left: 10px; color: #fff; font-size: 16px; }
+        #levelIndicator { position: absolute; top: 10px; right: 10px; color: #fff; font-size: 16px; }
+        #shotsLeft { position: absolute; bottom: 10px; left: 10px; color: #fff; font-size: 16px; }
+        #gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff4d4d; font-size: 24px; text-align: center; display: none; }
+        #nextLevel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #4dff4d; font-size: 24px; text-align: center; display: none; }
+        #crosshair { position: absolute; width: 20px; height: 20px; background: transparent; border: 2px solid #ff4d4d; border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="375" height="667"></canvas>
+    <div id="scoreboard">Score: 0</div>
+    <div id="levelIndicator">Level: 1</div>
+    <div id="shotsLeft">Shots: 5</div>
+    <div id="gameOver">Game Over<br>Tap to Restart</div>
+    <div id="nextLevel">Level Complete<br>Tap for Next Level</div>
+    <div id="crosshair"></div>
 
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreboard = document.getElementById('scoreboard');
+        const levelIndicator = document.getElementById('levelIndicator');
+        const shotsLeft = document.getElementById('shotsLeft');
+        const gameOver = document.getElementById('gameOver');
+        const nextLevel = document.getElementById('nextLevel');
+        const crosshair = document.getElementById('crosshair');
+
+        let level = 1;
+        let score = 0;
+        let shots = 5;
+        let targetDistance = 20; // Starting at 20 feet
+        let targetSize = 100; // Base size, scales with distance
+        let targetX = canvas.width / 2;
+        let targetY = canvas.height / 2;
+        let gunX = canvas.width / 2;
+        let gunY = canvas.height - 50;
+        let crosshairX = gunX;
+        let crosshairY = gunY;
+        let gameState = 'playing'; // playing, levelComplete, gameOver
+        let particles = [];
+
+        // Handle tap to fire and move crosshair
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            crosshairX = touch.clientX - canvas.offsetLeft;
+            crosshairY = touch.clientY - canvas.offsetTop;
+            crosshair.style.left = crosshairX + 'px';
+            crosshair.style.top = crosshairY + 'px';
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                fire();
+            } else if (gameState === 'levelComplete') {
+                nextLevel.style.display = 'none';
+                levelUp();
+            } else if (gameState === 'gameOver') {
+                resetGame();
+            }
+        });
+
+        function fire() {
+            shots--;
+            shotsLeft.textContent = `Shots: ${shots}`;
+
+            // Calculate distance from crosshair to target center
+            const dx = crosshairX - targetX;
+            const dy = crosshairY - targetY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            let shotScore = 0;
+
+            // Dartboard-style scoring based on distance from center
+            const ringSize = targetSize / 5;
+            if (distance < ringSize) shotScore = 100; // Bullseye
+            else if (distance < ringSize * 2) shotScore = 50;
+            else if (distance < ringSize * 3) shotScore = 40;
+            else if (distance < ringSize * 4) shotScore = 30;
+            else if (distance < ringSize * 5) shotScore = 20;
+
+            score += shotScore;
+            scoreboard.textContent = `Score: ${score}`;
+
+            // Particle effect for hit
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: crosshairX,
+                    y: crosshairY,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    life: 20,
+                    color: shotScore === 100 ? '#ff4d4d' : '#ffd700'
+                });
+            }
+
+            if (shots === 0) checkLevelEnd();
+        }
+
+        function checkLevelEnd() {
+            if (score >= level * 40) {
+                gameState = 'levelComplete';
+                nextLevel.style.display = 'block';
+            } else {
+                gameState = 'gameOver';
+                gameOver.style.display = 'block';
+            }
+        }
+
+        function levelUp() {
+            level++;
+            if (level > 5) {
+                gameState = 'gameOver';
+                gameOver.textContent = 'You Win!\nTap to Restart';
+                gameOver.style.display = 'block';
+                return;
+            }
+            shots = 5;
+            targetDistance += 5; // Increase distance by 5 feet each level
+            targetSize = 100 * (20 / targetDistance); // Scale target size inversely with distance
+            shotsLeft.textContent = `Shots: ${shots}`;
+            levelIndicator.textContent = `Level: ${level}`;
+            gameState = 'playing';
+        }
+
+        function resetGame() {
+            level = 1;
+            score = 0;
+            shots = 5;
+            targetDistance = 20;
+            targetSize = 100;
+            scoreboard.textContent = `Score: ${score}`;
+            levelIndicator.textContent = `Level: ${level}`;
+            shotsLeft.textContent = `Shots: ${shots}`;
+            gameOver.style.display = 'none';
+            gameState = 'playing';
+        }
+
+        function drawTarget() {
+            // Draw target (dartboard style)
+            const rings = 5;
+            const ringSize = targetSize / rings;
+            for (let i = rings; i >= 0; i--) {
+                ctx.beginPath();
+                ctx.arc(targetX, targetY, ringSize * i, 0, Math.PI * 2);
+                ctx.fillStyle = i % 2 === 0 ? '#ff4d4d' : '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.stroke();
+            }
+
+            // Draw bullseye eyes
+            ctx.beginPath();
+            ctx.arc(targetX - ringSize * 0.5, targetY - ringSize * 0.5, ringSize * 0.2, 0, Math.PI * 2);
+            ctx.fillStyle = '#000';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(targetX + ringSize * 0.5, targetY - ringSize * 0.5, ringSize * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawParticles() {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+            });
+        }
+
+        function drawGun() {
+            ctx.beginPath();
+            ctx.moveTo(gunX - 20, gunY);
+            ctx.lineTo(gunX + 20, gunY);
+            ctx.lineTo(gunX, gunY - 30);
+            ctx.closePath();
+            ctx.fillStyle = '#888';
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.stroke();
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawTarget();
+            drawGun();
+            drawParticles();
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
