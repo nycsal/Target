@@ -37,23 +37,41 @@
         let level = 1;
         let score = 0;
         let shots = 5;
-        let targetDistance = 20; // Starting at 20 feet
-        let targetSize = 100; // Base size, scales with distance
+        let targetDistance = 20;
+        let targetSize = 100;
         let targetX = canvas.width / 2;
         let targetY = canvas.height / 2;
         let gunX = canvas.width / 2;
         let gunY = canvas.height - 50;
         let crosshairX = gunX;
-        let crosshairY = gunY;
-        let gameState = 'playing'; // playing, levelComplete, gameOver
+        let crosshairY = gunY - 100;
+        let angle = 0; // Angle of the gun in radians
+        let gameState = 'playing';
         let particles = [];
+        let bulletTrace = null;
 
-        // Handle tap to fire and move crosshair
+        // Restrict crosshair movement to a gun-like pivot
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            crosshairX = touch.clientX - canvas.offsetLeft;
-            crosshairY = touch.clientY - canvas.offsetTop;
+            const touchX = touch.clientX - canvas.offsetLeft;
+            const touchY = touch.clientY - canvas.offsetTop;
+
+            // Calculate angle between gun and touch point
+            const dx = touchX - gunX;
+            const dy = touchY - gunY;
+            angle = Math.atan2(dy, dx);
+
+            // Restrict angle to a reasonable range (e.g., -60 to 60 degrees from vertical)
+            const minAngle = -Math.PI / 3; // -60 degrees
+            const maxAngle = Math.PI / 3;   // 60 degrees
+            angle = Math.max(minAngle, Math.min(maxAngle, angle));
+
+            // Calculate crosshair position based on angle and fixed distance from gun
+            const crosshairDistance = 100; // Distance from gun to crosshair
+            crosshairX = gunX + Math.cos(angle) * crosshairDistance;
+            crosshairY = gunY + Math.sin(angle) * crosshairDistance;
+
             crosshair.style.left = crosshairX + 'px';
             crosshair.style.top = crosshairY + 'px';
         });
@@ -74,19 +92,31 @@
             shots--;
             shotsLeft.textContent = `Shots: ${shots}`;
 
-            // Calculate distance from crosshair to target center
-            const dx = crosshairX - targetX;
-            const dy = crosshairY - targetY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Calculate bullet trajectory to target
+            const dx = targetX - gunX;
+            const dy = targetY - gunY;
+            const distanceToTarget = Math.sqrt(dx * dx + dy * dy);
+
+            // Show bullet trace
+            bulletTrace = { x1: gunX, y1: gunY, x2: crosshairX, y2: crosshairY, life: 10 };
+
+            // Calculate hit position based on crosshair
+            const hitX = crosshairX;
+            const hitY = crosshairY;
+
+            // Calculate distance from hit to target center
+            const hitDx = hitX - targetX;
+            const hitDy = hitY - targetY;
+            const hitDistance = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
             let shotScore = 0;
 
-            // Dartboard-style scoring based on distance from center
+            // Dartboard-style scoring
             const ringSize = targetSize / 5;
-            if (distance < ringSize) shotScore = 100; // Bullseye
-            else if (distance < ringSize * 2) shotScore = 50;
-            else if (distance < ringSize * 3) shotScore = 40;
-            else if (distance < ringSize * 4) shotScore = 30;
-            else if (distance < ringSize * 5) shotScore = 20;
+            if (hitDistance < ringSize) shotScore = 100;
+            else if (hitDistance < ringSize * 2) shotScore = 50;
+            else if (hitDistance < ringSize * 3) shotScore = 40;
+            else if (hitDistance < ringSize * 4) shotScore = 30;
+            else if (hitDistance < ringSize * 5) shotScore = 20;
 
             score += shotScore;
             scoreboard.textContent = `Score: ${score}`;
@@ -94,8 +124,8 @@
             // Particle effect for hit
             for (let i = 0; i < 10; i++) {
                 particles.push({
-                    x: crosshairX,
-                    y: crosshairY,
+                    x: hitX,
+                    y: hitY,
                     vx: (Math.random() - 0.5) * 5,
                     vy: (Math.random() - 0.5) * 5,
                     life: 20,
@@ -125,8 +155,8 @@
                 return;
             }
             shots = 5;
-            targetDistance += 5; // Increase distance by 5 feet each level
-            targetSize = 100 * (20 / targetDistance); // Scale target size inversely with distance
+            targetDistance += 5;
+            targetSize = 100 * (20 / targetDistance);
             shotsLeft.textContent = `Shots: ${shots}`;
             levelIndicator.textContent = `Level: ${level}`;
             gameState = 'playing';
@@ -138,6 +168,9 @@
             shots = 5;
             targetDistance = 20;
             targetSize = 100;
+            angle = 0;
+            crosshairX = gunX;
+            crosshairY = gunY - 100;
             scoreboard.textContent = `Score: ${score}`;
             levelIndicator.textContent = `Level: ${level}`;
             shotsLeft.textContent = `Shots: ${shots}`;
@@ -146,7 +179,6 @@
         }
 
         function drawTarget() {
-            // Draw target (dartboard style)
             const rings = 5;
             const ringSize = targetSize / rings;
             for (let i = rings; i >= 0; i--) {
@@ -157,8 +189,6 @@
                 ctx.strokeStyle = '#000';
                 ctx.stroke();
             }
-
-            // Draw bullseye eyes
             ctx.beginPath();
             ctx.arc(targetX - ringSize * 0.5, targetY - ringSize * 0.5, ringSize * 0.2, 0, Math.PI * 2);
             ctx.fillStyle = '#000';
@@ -166,6 +196,18 @@
             ctx.beginPath();
             ctx.arc(targetX + ringSize * 0.5, targetY - ringSize * 0.5, ringSize * 0.2, 0, Math.PI * 2);
             ctx.fill();
+        }
+
+        function drawBulletTrace() {
+            if (bulletTrace && bulletTrace.life > 0) {
+                ctx.beginPath();
+                ctx.moveTo(bulletTrace.x1, bulletTrace.y1);
+                ctx.lineTo(bulletTrace.x2, bulletTrace.y2);
+                ctx.strokeStyle = '#ff4d4d';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                bulletTrace.life--;
+            }
         }
 
         function drawParticles() {
@@ -182,25 +224,32 @@
         }
 
         function drawGun() {
+            ctx.save();
+            ctx.translate(gunX, gunY);
+            ctx.rotate(angle);
             ctx.beginPath();
-            ctx.moveTo(gunX - 20, gunY);
-            ctx.lineTo(gunX + 20, gunY);
-            ctx.lineTo(gunX, gunY - 30);
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(10, 0);
+            ctx.lineTo(0, -30);
             ctx.closePath();
             ctx.fillStyle = '#888';
             ctx.fill();
             ctx.strokeStyle = '#000';
             ctx.stroke();
+            ctx.restore();
         }
 
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawTarget();
             drawGun();
+            drawBulletTrace();
             drawParticles();
             requestAnimationFrame(animate);
         }
 
+        crosshair.style.left = crosshairX + 'px';
+        crosshair.style.top = crosshairY + 'px';
         animate();
     </script>
 </body>
